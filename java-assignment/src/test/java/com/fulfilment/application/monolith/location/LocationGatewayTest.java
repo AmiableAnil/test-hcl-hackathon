@@ -1,5 +1,9 @@
 package com.fulfilment.application.monolith.location;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+import com.fulfilment.application.monolith.warehouses.domain.models.Location;
 import org.junit.jupiter.api.Test;
 
 public class LocationGatewayTest {
@@ -7,12 +11,24 @@ public class LocationGatewayTest {
   @Test
   public void testWhenResolveExistingLocationShouldReturn() {
     // given
-    // LocationGateway locationGateway = new LocationGateway();
+    LocationGateway locationGateway = new LocationGateway();
 
     // when
-    // Location location = locationGateway.resolveByIdentifier("ZWOLLE-001");
+    Location location = locationGateway.resolveByIdentifier("ZWOLLE-001");
 
     // then
-    // assertEquals(location.identification, "ZWOLLE-001");
+    assertEquals("ZWOLLE-001", location.identification);
+  }
+
+  @Test
+  public void testWhenResolveNonExistingLocationShouldReturnNull() {
+    // given
+    LocationGateway locationGateway = new LocationGateway();
+
+    // when
+    Location location = locationGateway.resolveByIdentifier("NON-EXISTENT");
+
+    // then
+    assertNull(location);
   }
 }
