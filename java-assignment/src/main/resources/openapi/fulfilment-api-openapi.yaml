@@ -1,0 +1,826 @@
+openapi: 3.0.3
+info:
+  title: Fulfilment Application API
+  description: |
+    REST API for the Fulfilment Application Monolith.
+
+    This API provides endpoints for managing:
+    - **Warehouses** - Storage units with capacity and stock tracking
+    - **Products** - Items that can be stored and sold
+    - **Stores** - Retail locations with inventory
+    - **Fulfillment** - Associations linking products, warehouses, and stores
+  version: 1.0.0
+  contact:
+    name: Fulfilment Team
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Warehouse
+    description: Warehouse management operations
+  - name: Product
+    description: Product catalog operations
+  - name: Store
+    description: Store management operations
+  - name: Fulfillment
+    description: Fulfillment association operations
+
+paths:
+  # ==================== WAREHOUSE ENDPOINTS ====================
+  /warehouse:
+    get:
+      tags:
+        - Warehouse
+      summary: List all warehouses
+      description: Returns a list of all active warehouse units
+      operationId: listWarehouses
+      responses:
+        '200':
+          description: List of warehouse units
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Warehouse'
+    post:
+      tags:
+        - Warehouse
+      summary: Create a new warehouse
+      description: |
+        Creates a new warehouse unit. Validation rules:
+        - Business unit code must be unique
+        - Location must be a valid location identifier
+        - Capacity cannot exceed location's maximum capacity
+        - Maximum number of warehouses per location is enforced
+      operationId: createWarehouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WarehouseInput'
+      responses:
+        '200':
+          description: Warehouse created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Warehouse'
+        '400':
+          description: |
+            Invalid request. Possible reasons:
+            - Duplicate business unit code
+            - Invalid location
+            - Capacity exceeds location maximum
+            - Maximum warehouses for location reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /warehouse/{id}:
+    get:
+      tags:
+        - Warehouse
+      summary: Get warehouse by ID
+      description: Returns a single warehouse unit by its business unit code
+      operationId: getWarehouse
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Business unit code of the warehouse
+          schema:
+            type: string
+          example: "MWH.001"
+      responses:
+        '200':
+          description: Warehouse found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Warehouse'
+        '404':
+          description: Warehouse not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Warehouse
+      summary: Archive a warehouse
+      description: Archives (soft deletes) a warehouse unit by its business unit code
+      operationId: archiveWarehouse
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Business unit code of the warehouse to archive
+          schema:
+            type: string
+          example: "MWH.001"
+      responses:
+        '204':
+          description: Warehouse archived successfully
+        '404':
+          description: Warehouse not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /warehouse/{businessUnitCode}/replacement:
+    post:
+      tags:
+        - Warehouse
+      summary: Replace a warehouse
+      description: |
+        Replaces an existing warehouse with a new one using the same business unit code.
+        The previous warehouse will be archived and the new warehouse takes its place.
+
+        Validation rules:
+        - Original warehouse must exist
+        - New capacity cannot be less than current stock
+        - New capacity cannot exceed location's maximum
+      operationId: replaceWarehouse
+      parameters:
+        - name: businessUnitCode
+          in: path
+          required: true
+          description: Business unit code of the warehouse to replace
+          schema:
+            type: string
+          example: "MWH.001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WarehouseInput'
+      responses:
+        '200':
+          description: Warehouse replaced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Warehouse'
+        '400':
+          description: Invalid replacement parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Original warehouse not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== PRODUCT ENDPOINTS ====================
+  /product:
+    get:
+      tags:
+        - Product
+      summary: List all products
+      description: Returns a list of all products sorted by name
+      operationId: listProducts
+      responses:
+        '200':
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+    post:
+      tags:
+        - Product
+      summary: Create a new product
+      description: Creates a new product in the catalog
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '422':
+          description: Invalid input - ID was set on request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /product/{id}:
+    get:
+      tags:
+        - Product
+      summary: Get product by ID
+      description: Returns a single product by its ID
+      operationId: getProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the product
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        '200':
+          description: Product found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Product
+      summary: Update a product
+      description: Updates an existing product with new values
+      operationId: updateProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the product to update
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Product name was not provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Product
+      summary: Delete a product
+      description: Permanently deletes a product from the catalog
+      operationId: deleteProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the product to delete
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        '204':
+          description: Product deleted successfully
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== STORE ENDPOINTS ====================
+  /store:
+    get:
+      tags:
+        - Store
+      summary: List all stores
+      description: Returns a list of all stores sorted by name
+      operationId: listStores
+      responses:
+        '200':
+          description: List of stores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Store'
+    post:
+      tags:
+        - Store
+      summary: Create a new store
+      description: Creates a new store
+      operationId: createStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreInput'
+      responses:
+        '201':
+          description: Store created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Store'
+        '422':
+          description: Invalid input - ID was set on request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /store/{id}:
+    get:
+      tags:
+        - Store
+      summary: Get store by ID
+      description: Returns a single store by its ID
+      operationId: getStore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the store
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        '200':
+          description: Store found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Store'
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Store
+      summary: Update a store
+      description: Fully updates an existing store
+      operationId: updateStore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the store to update
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreInput'
+      responses:
+        '200':
+          description: Store updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Store'
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Store name was not provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags:
+        - Store
+      summary: Partially update a store
+      description: Partially updates an existing store with provided fields
+      operationId: patchStore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the store to update
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreInput'
+      responses:
+        '200':
+          description: Store patched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Store'
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Store name was not provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Store
+      summary: Delete a store
+      description: Permanently deletes a store
+      operationId: deleteStore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the store to delete
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        '204':
+          description: Store deleted successfully
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== FULFILLMENT ENDPOINTS ====================
+  /fulfillment:
+    get:
+      tags:
+        - Fulfillment
+      summary: List fulfillment associations
+      description: |
+        Returns fulfillment associations. Can be filtered by:
+        - productId: Get all associations for a specific product
+        - warehouseCode: Get all associations for a specific warehouse
+        - storeId: Get all associations for a specific store
+
+        If no filter is provided, returns all associations.
+      operationId: listFulfillmentAssociations
+      parameters:
+        - name: productId
+          in: query
+          required: false
+          description: Filter by product ID
+          schema:
+            type: integer
+            format: int64
+          example: 1
+        - name: warehouseCode
+          in: query
+          required: false
+          description: Filter by warehouse business unit code
+          schema:
+            type: string
+          example: "MWH.001"
+        - name: storeId
+          in: query
+          required: false
+          description: Filter by store ID
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        '200':
+          description: List of fulfillment associations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FulfillmentAssociation'
+    post:
+      tags:
+        - Fulfillment
+      summary: Create a fulfillment association
+      description: |
+        Creates a new fulfillment association linking a product, warehouse, and store.
+
+        Validation rules:
+        - Product must exist
+        - Warehouse must exist
+        - Store must exist
+      operationId: createFulfillmentAssociation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FulfillmentAssociationInput'
+      responses:
+        '201':
+          description: Fulfillment association created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FulfillmentAssociation'
+        '400':
+          description: |
+            Invalid request. Possible reasons:
+            - Product does not exist
+            - Warehouse does not exist
+            - Store does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /fulfillment/{id}:
+    delete:
+      tags:
+        - Fulfillment
+      summary: Delete a fulfillment association
+      description: Removes a fulfillment association by its ID
+      operationId: deleteFulfillmentAssociation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the fulfillment association
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        '204':
+          description: Fulfillment association deleted successfully
+        '404':
+          description: Fulfillment association not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    # ==================== WAREHOUSE SCHEMAS ====================
+    Warehouse:
+      type: object
+      description: A warehouse unit for storing products
+      properties:
+        id:
+          type: string
+          description: Internal database identifier
+          example: "456"
+        businessUnitCode:
+          type: string
+          description: Unique business unit code (format MWH.XXX)
+          example: "MWH.001"
+        location:
+          type: string
+          description: Location identifier where the warehouse is situated
+          example: "AMSTERDAM-001"
+        capacity:
+          type: integer
+          description: Maximum storage capacity of the warehouse
+          example: 100
+        stock:
+          type: integer
+          description: Current stock level in the warehouse
+          example: 50
+
+    WarehouseInput:
+      type: object
+      description: Input for creating or updating a warehouse
+      required:
+        - businessUnitCode
+        - location
+        - capacity
+      properties:
+        businessUnitCode:
+          type: string
+          description: Unique business unit code (format MWH.XXX)
+          example: "MWH.001"
+        location:
+          type: string
+          description: |
+            Location identifier. Valid locations:
+            - AMSTERDAM-001, AMSTERDAM-002
+            - ZWOLLE-001, ZWOLLE-002
+            - TILBURG-001
+            - HELMOND-001
+            - EINDHOVEN-001
+            - VETSBY-001
+          example: "AMSTERDAM-001"
+        capacity:
+          type: integer
+          description: Maximum storage capacity
+          minimum: 1
+          example: 100
+        stock:
+          type: integer
+          description: Initial stock level
+          minimum: 0
+          default: 0
+          example: 50
+
+    # ==================== PRODUCT SCHEMAS ====================
+    Product:
+      type: object
+      description: A product in the catalog
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier
+          example: 1
+        name:
+          type: string
+          description: Product name (max 40 characters)
+          maxLength: 40
+          example: "Widget Pro"
+        description:
+          type: string
+          description: Product description
+          example: "A professional-grade widget"
+        price:
+          type: number
+          format: decimal
+          description: Product price
+          example: 29.99
+        stock:
+          type: integer
+          description: Current stock quantity
+          example: 100
+
+    ProductInput:
+      type: object
+      description: Input for creating or updating a product
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Product name (max 40 characters)
+          maxLength: 40
+          example: "Widget Pro"
+        description:
+          type: string
+          description: Product description
+          example: "A professional-grade widget"
+        price:
+          type: number
+          format: decimal
+          description: Product price
+          example: 29.99
+        stock:
+          type: integer
+          description: Stock quantity
+          default: 0
+          example: 100
+
+    # ==================== STORE SCHEMAS ====================
+    Store:
+      type: object
+      description: A retail store location
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier
+          example: 1
+        name:
+          type: string
+          description: Store name (max 40 characters)
+          maxLength: 40
+          example: "Downtown Store"
+        quantityProductsInStock:
+          type: integer
+          description: Total quantity of products in stock
+          example: 500
+
+    StoreInput:
+      type: object
+      description: Input for creating or updating a store
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Store name (max 40 characters)
+          maxLength: 40
+          example: "Downtown Store"
+        quantityProductsInStock:
+          type: integer
+          description: Quantity of products in stock
+          default: 0
+          example: 500
+
+    # ==================== FULFILLMENT SCHEMAS ====================
+    FulfillmentAssociation:
+      type: object
+      description: Links a product to a warehouse and store for fulfillment
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier
+          example: 1
+        productId:
+          type: integer
+          format: int64
+          description: ID of the associated product
+          example: 1
+        warehouseCode:
+          type: string
+          description: Business unit code of the associated warehouse
+          example: "MWH.001"
+        storeId:
+          type: integer
+          format: int64
+          description: ID of the associated store
+          example: 1
+
+    FulfillmentAssociationInput:
+      type: object
+      description: Input for creating a fulfillment association
+      required:
+        - productId
+        - warehouseCode
+        - storeId
+      properties:
+        productId:
+          type: integer
+          format: int64
+          description: ID of the product to associate
+          example: 1
+        warehouseCode:
+          type: string
+          description: Business unit code of the warehouse
+          example: "MWH.001"
+        storeId:
+          type: integer
+          format: int64
+          description: ID of the store
+          example: 1
+
+    # ==================== ERROR SCHEMA ====================
+    Error:
+      type: object
+      description: Error response
+      properties:
+        exceptionType:
+          type: string
+          description: Type of exception that occurred
+          example: "jakarta.ws.rs.WebApplicationException"
+        code:
+          type: integer
+          description: HTTP status code
+          example: 404
+        error:
+          type: string
+          description: Error message
+          example: "Product with id of 1 does not exist."
